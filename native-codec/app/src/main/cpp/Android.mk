@@ -15,6 +15,13 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := ffmpeg
+LOCAL_SRC_FILES := $(LOCAL_PATH)/ffmpeg/neon/libffmpeg.so
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/ffmpeg/neon/include
+
+include $(PREBUILT_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
 
 LOCAL_MODULE    := native-codec-jni
 LOCAL_SRC_FILES := native-codec-jni.cpp looper.cpp
@@ -24,6 +31,8 @@ LOCAL_LDLIBS    += -lOpenMAXAL -lmediandk
 LOCAL_LDLIBS    += -llog
 # for native windows
 LOCAL_LDLIBS    += -landroid
+
+LOCAL_SHARED_LIBRARIES := ffmpeg
 
 LOCAL_CFLAGS    += -UNDEBUG
 

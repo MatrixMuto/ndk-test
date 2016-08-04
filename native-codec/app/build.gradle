@@ -12,7 +12,14 @@ android {
         applicationId "com.example.nativecodec"
         minSdkVersion 21
         targetSdkVersion 21
-
+        externalNativeBuild {
+            ndkBuild {
+                arguments "NDK_APPLICATION_MK:=src/main/cpp/Application.mk"
+                cFlags "-DTEST_C_FLAG1", "-DTEST_C_FLAG2"
+                cppFlags "-DTEST_CPP_FLAG2", "-DTEST_CPP_FLAG2"
+                abiFilters "armeabi-v7a", "armeabi"
+            }
+        }
     }
 
     buildTypes {

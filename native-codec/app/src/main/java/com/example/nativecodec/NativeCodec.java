@@ -34,6 +34,8 @@ import android.widget.Spinner;
 
 import java.io.IOException;
 
+import to.mu.tomato.Tomato;
+
 public class NativeCodec extends Activity {
     static final String TAG = "NativeCodec";
 
@@ -166,6 +168,9 @@ public class NativeCodec extends Activity {
 
             @Override
             public void onClick(View view) {
+                Tomato tomato = Tomato.Factory.newInstance();
+                tomato.prepare("");
+
                 if (!mCreated) {
                     if (mNativeCodecPlayerVideoSink == null) {
                         if (mSelectedVideoSink == null) {
@@ -182,6 +187,7 @@ public class NativeCodec extends Activity {
                     mIsPlaying = !mIsPlaying;
                     setPlayingStreamingMediaPlayer(mIsPlaying);
                 }
+
             }
 
         });
@@ -251,7 +257,7 @@ public class NativeCodec extends Activity {
     private RadioButton mRadio2;
 
     /** Native methods, implemented in jni folder */
-    public static native void createEngine();
+//    public static native void createEngine();
     public static native boolean createStreamingMediaPlayer(String filename);
     public static native void setPlayingStreamingMediaPlayer(boolean isPlaying);
     public static native void shutdown();
@@ -260,6 +266,7 @@ public class NativeCodec extends Activity {
 
     /** Load jni .so on initialization */
     static {
+         System.loadLibrary("ffmpeg");
          System.loadLibrary("native-codec-jni");
     }
 

@@ -39,6 +39,8 @@
 #include "media/NdkMediaCodec.h"
 #include "media/NdkMediaExtractor.h"
 
+
+
 // for __android_log_print(ANDROID_LOG_INFO, "YourApp", "formatted message");
 #include <android/log.h>
 #define TAG "NativeCodec"
@@ -46,7 +48,9 @@
 
 // for native window JNI
 #include <android/native_window_jni.h>
-
+extern "C" {
+#include "libavformat/avformat.h"
+}
 typedef struct {
     int fd;
     ANativeWindow* window;
@@ -57,6 +61,7 @@ typedef struct {
     bool sawOutputEOS;
     bool isPlaying;
     bool renderonce;
+    AVFormatContext *ic;
 } workerdata;
 
 workerdata data = {-1, NULL, NULL, NULL, 0, false, false, false, false};
@@ -68,6 +73,7 @@ enum {
     kMsgPauseAck,
     kMsgDecodeDone,
     kMsgSeek,
+    kMsgTest,
 };
 
 
@@ -87,23 +93,44 @@ int64_t systemnanotime() {
 void doCodecWork(workerdata *d) {
 
     ssize_t bufidx = -1;
+    int err;
     if (!d->sawInputEOS) {
-        bufidx = AMediaCodec_dequeueInputBuffer(d->codec, 2000);
+        bufidx = AMediaCodec_dequeueInputBuffer(d->codec, 20000);
         LOGV("input buffer %zd", bufidx);
         if (bufidx >= 0) {
             size_t bufsize;
             uint8_t *buf = AMediaCodec_getInputBuffer(d->codec, bufidx, &bufsize);
-            ssize_t sampleSize = AMediaExtractor_readSampleData(d->ex, buf, bufsize);
-            if (sampleSize < 0) {
-                sampleSize = 0;
-                d->sawInputEOS = true;
-                LOGV("EOS");
-            }
-            int64_t presentationTimeUs = AMediaExtractor_getSampleTime(d->ex);
+            ssize_t sampleSize;
+//            ssize_t sampleSize = AMediaExtractor_readSampleData(d->ex, buf, bufsize);
+//            if (sampleSize < 0) {
+//                sampleSize = 0;
+//                d->sawInputEOS = true;
+//                LOGV("EOS");
+//            }
+            //int64_t presentationTimeUs = AMediaExtractor_getSampleTime(d->ex);
+
+            AVPacket packet = {0};
+            do
+            {
+                err = av_read_frame(d->ic, &packet);
+                if (err < 0) {
+                    LOGV("@@@ ---------read frame err %d",err);
+                    usleep(1000*10);
+                }
+                else {
+                    LOGV("@@@ --------- %d %d %u %x",packet.stream_index, packet.size, bufsize, packet.flags);
+                }
+            }while(packet.stream_index != 0 || err<0 || packet.flags != 1);
+
+
+            memcpy(buf, packet.data, packet.size);
+
+            sampleSize = packet.size;
+            int64_t presentationTimeUs = packet.pts;
 
             AMediaCodec_queueInputBuffer(d->codec, bufidx, 0, sampleSize, presentationTimeUs,
                     d->sawInputEOS ? AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM : 0);
-            AMediaExtractor_advance(d->ex);
+//            AMediaExtractor_advance(d->ex);
         }
     }
 
@@ -201,6 +228,31 @@ void mylooper::handle(int what, void* obj) {
             }
         }
         break;
+        case kMsgTest:
+        {
+            workerdata *d = (workerdata*)obj;
+            int err, i;
+            LOGV("@@@ --------------------------test");
+            const char *url = "rtmp://live.hkstv.hk.lxdns.com/live/hks";
+            avformat_network_init();
+            av_register_all();
+            AVFormatContext *ic = d->ic = NULL;
+            err = avformat_open_input(&d->ic, url, NULL, NULL);
+            if (err < 0) {
+                LOGV("@@@ --------------------------open error %d",err);
+                return;
+            }
+
+            for (i = 0; i < ic->nb_streams; i++) {
+                AVStream *st = ic->streams[i];
+            }
+//            av_dump_format(d->ic, 0, url, 0);
+
+            //avformat_close_input(&ic);
+            //avformat_network_deinit();
+            LOGV("@@@ --------------------------test");
+        }
+        break;
     }
 }
 
@@ -208,6 +260,12 @@ void mylooper::handle(int what, void* obj) {
 
 
 extern "C" {
+
+JNIEXPORT void JNICALL
+Java_to_mu_tomato_TomatoImpl_test(JNIEnv *env, jobject instance) {
+    // TODO
+
+}
 
 jboolean Java_com_example_nativecodec_NativeCodec_createStreamingMediaPlayer(JNIEnv* env,
         jclass clazz, jstring filename)
@@ -268,6 +326,7 @@ jboolean Java_com_example_nativecodec_NativeCodec_createStreamingMediaPlayer(JNI
     }
 
     mlooper = new mylooper();
+    mlooper->post(kMsgTest, d);
     mlooper->post(kMsgCodecBuffer, d);
 
     return JNI_TRUE;
