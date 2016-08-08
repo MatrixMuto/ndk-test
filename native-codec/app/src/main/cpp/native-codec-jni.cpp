@@ -62,6 +62,7 @@ typedef struct {
     bool isPlaying;
     bool renderonce;
     AVFormatContext *ic;
+    int video_stream_index;
 } workerdata;
 
 workerdata data = {-1, NULL, NULL, NULL, 0, false, false, false, false};
@@ -109,24 +110,33 @@ void doCodecWork(workerdata *d) {
 //            }
             //int64_t presentationTimeUs = AMediaExtractor_getSampleTime(d->ex);
 
-            AVPacket packet = {0};
+            AVPacket pkt1, *pkt = &pkt1;
             do
             {
-                err = av_read_frame(d->ic, &packet);
+                err = av_read_frame(d->ic, pkt);
                 if (err < 0) {
                     LOGV("@@@ ---------read frame err %d",err);
                     usleep(1000*10);
                 }
                 else {
-                    LOGV("@@@ --------- %d %d %u %x",packet.stream_index, packet.size, bufsize, packet.flags);
+                    LOGV("@@@ --------- %d %d %u %x", pkt->stream_index, pkt->size, bufsize,
+                         pkt->flags);
+                    for (uint8_t *p = pkt->data; p < pkt->data + pkt->size;) {
+                        int len = p[1] * 256 * 16 + p[2] * 256 + p[3];
+                        printf("len = %d\n", len);
+                        p[0] = p[1] = p[2] = 0;
+                        p[3] = 1;
+                        //dump("/tmp/arb.264",p, len + 4);
+                        p += len + 4;
+                    }
                 }
-            }while(packet.stream_index != 0 || err<0 || packet.flags != 1);
+            } while (pkt->stream_index != d->video_stream_index || err < 0);
 
 
-            memcpy(buf, packet.data, packet.size);
+            memcpy(buf, pkt->data, pkt->size);
 
-            sampleSize = packet.size;
-            int64_t presentationTimeUs = packet.pts;
+            sampleSize = pkt->size;
+            int64_t presentationTimeUs = pkt->pts;
 
             AMediaCodec_queueInputBuffer(d->codec, bufidx, 0, sampleSize, presentationTimeUs,
                     d->sawInputEOS ? AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM : 0);
@@ -236,15 +246,24 @@ void mylooper::handle(int what, void* obj) {
             const char *url = "rtmp://live.hkstv.hk.lxdns.com/live/hks";
             avformat_network_init();
             av_register_all();
-            AVFormatContext *ic = d->ic = NULL;
+            d->ic = NULL;
             err = avformat_open_input(&d->ic, url, NULL, NULL);
             if (err < 0) {
                 LOGV("@@@ --------------------------open error %d",err);
                 return;
             }
+            AVFormatContext *ic = d->ic;
+            err = avformat_find_stream_info(d->ic, NULL);
+            if (err < 0) {
+                LOGV("@@@ --------------------------avformat_find_stream_info error %d", err);
+                return;
+            }
 
             for (i = 0; i < ic->nb_streams; i++) {
                 AVStream *st = ic->streams[i];
+                if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+                    d->video_stream_index = i;
+                }
             }
 //            av_dump_format(d->ic, 0, url, 0);
 

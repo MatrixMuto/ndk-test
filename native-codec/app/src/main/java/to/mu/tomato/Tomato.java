@@ -6,7 +6,7 @@ package to.mu.tomato;
 
 public interface Tomato {
 
-    public static class Factory {
+    class Factory {
         public static Tomato newInstance() {
             return new TomatoImpl();
         }
